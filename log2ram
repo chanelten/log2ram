@@ -107,6 +107,10 @@ case "$1" in
         ;;
 
     stop)
+        if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
+          logrotate $LOGROTATE_SYNC_CONFIG
+        fi
+
         IFS=';'
         for i in $PATH_DISK; do
             PATH_FIRST_PART=$( echo ${i%/*} )
@@ -126,6 +130,10 @@ case "$1" in
         ;;
 
     write)
+        if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
+          logrotate $LOGROTATE_SYNC_CONFIG
+        fi
+
         IFS=';'
         for i in $PATH_DISK; do
             PATH_FIRST_PART=$( echo ${i%/*} )

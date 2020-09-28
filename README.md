@@ -45,6 +45,7 @@ In the file `/etc/log2ram.conf`, there are three variables:
 - `USE_RSYNC`: Can be set to `true` if you prefer ´rsync´ rather than ´cp´. I use the command `cp -u` and `rsync -X`, I don't copy the all folder every time for optimization.
 - `MAIL`: Disables the error system mail if there is not enough place on RAM (if set to `false`)
 - `ZL2R`: Enable zram compatibility (`false` by default). Check the comment on the config file. See https://github.com/StuartIanNaylor/zram-swap-config to configure a zram space on your raspberry before enable this option.
+- `LOGROTATE_SYNC_CONFIG`: Run logrotate for the given config before syncing the RAM disk to hdd.
 
 #### refresh time:
 By default Log2Ram writes to disk every day. If you think this is too much, you can run `systemctl edit log2ram-daily.timer` and add:
