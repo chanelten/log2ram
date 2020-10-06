@@ -1,6 +1,6 @@
 /var/log/log2ram.log
 {
-  rotate 7
+  rotate 1
   daily
   missingok
   notifempty
