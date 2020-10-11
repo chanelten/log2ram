@@ -89,6 +89,7 @@ doLogrotate () {
     fi
 }
 
+# if LOGROTATE_SYNC_CONFIG is specified then disable the logrotate timer to avoid contention
 if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
     systemctl disable logrotate.timer
 fi
