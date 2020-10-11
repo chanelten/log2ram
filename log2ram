@@ -47,10 +47,14 @@ syncFromDisk () {
         exit 1
     fi
 
-    if [ -x "$(command -v rsync)" ]; then
-        rsync -aXv --inplace --no-whole-file --delete-after $HDD_LOG/ $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+    if [ ! -z "$RAM_DISK_EXCLUDE" ]; then
+        find $HDD_LOG/ -type f ! -name $RAM_DISK_EXCLUDE -exec cp -rfup {} $RAM_LOG/ \; 2>&1 | tee -a $LOG2RAM_LOG
     else
-        cp -rfup $HDD_LOG/ -T $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+        if [ -x "$(command -v rsync)" ]; then
+            rsync -aXv --inplace --no-whole-file --delete-after $HDD_LOG/ $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+        else
+            cp -rfup $HDD_LOG/ -T $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+        fi
     fi
 
 }
@@ -78,6 +82,16 @@ createZramLogDrive () {
 make_log_dir () {
     [ -d $HDD_LOG/ ] || mkdir $HDD_LOG/
 }
+
+doLogrotate () {
+    if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
+          logrotate $LOGROTATE_SYNC_CONFIG
+    fi
+}
+
+if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
+    systemctl disable logrotate.timer
+fi
 
 case "$1" in
     start)
@@ -107,9 +121,7 @@ case "$1" in
         ;;
 
     stop)
-        if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
-          logrotate $LOGROTATE_SYNC_CONFIG
-        fi
+        doLogrotate
 
         IFS=';'
         for i in $PATH_DISK; do
@@ -130,9 +142,7 @@ case "$1" in
         ;;
 
     write)
-        if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
-          logrotate $LOGROTATE_SYNC_CONFIG
-        fi
+        doLogrotate
 
         IFS=';'
         for i in $PATH_DISK; do
