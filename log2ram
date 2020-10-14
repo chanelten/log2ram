@@ -47,14 +47,12 @@ syncFromDisk () {
         exit 1
     fi
 
-    if [ ! -z "$RAM_DISK_EXCLUDE" ]; then
-        find $HDD_LOG/ -type f ! -name $RAM_DISK_EXCLUDE -exec cp -rfup {} $RAM_LOG/ \; 2>&1 | tee -a $LOG2RAM_LOG
+    if [ ! -z "$CUSTOM_SYNC_FROM_DISK" ]; then
+        eval $CUSTOM_SYNC_FROM_DISK 2>&1 | tee -a $LOG2RAM_LOG
+    elif [ -x "$(command -v rsync)" ]; then
+        rsync -aXv --inplace --no-whole-file --delete-after $HDD_LOG/ $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
     else
-        if [ -x "$(command -v rsync)" ]; then
-            rsync -aXv --inplace --no-whole-file --delete-after $HDD_LOG/ $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
-        else
-            cp -rfup $HDD_LOG/ -T $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
-        fi
+        cp -rfup $HDD_LOG/ -T $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
     fi
 
 }
