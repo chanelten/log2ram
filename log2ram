@@ -29,6 +29,17 @@ syncToDisk () {
     fi
 }
 
+ramDiskToSmall () {
+    echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
+    umount -l $RAM_LOG/
+    umount -l $HDD_LOG/
+    if [ "$MAIL" = true ]; then
+        echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
+    fi
+    exit 1
+
+}
+
 syncFromDisk () {
     isSafe
 
@@ -43,23 +54,11 @@ syncFromDisk () {
         LS_CMD='-exec ls -l  {} \;'
         SRC_SIZE=$(eval "$CUSTOM_SYNC_FROM_DISK $LS_CMD" | awk '{ sum += $5 } END { print sum }')
         if [ $SRC_SIZE -gt $TP_LIMIT ] ; then
-            echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
-            umount -l $RAM_LOG/
-            umount -l $HDD_LOG/
-            if [ "$MAIL" = true ]; then
-                echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
-            fi
-            exit 1
+            ramDiskToSmall
         fi
     # else use standard caluclation
     elif [ ! -z "$(du -sh -t "$TP_SIZE" $HDD_LOG/ | cut -f1)" ]; then
-        echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
-        umount -l $RAM_LOG/
-        umount -l $HDD_LOG/
-        if [ "$MAIL" = true ]; then
-            echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
-        fi
-        exit 1
+        ramDiskToSmall
     fi
 
     COPY_CMD='-exec cp -rfup {} $RAM_LOG/ \;'
