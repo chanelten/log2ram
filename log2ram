@@ -29,6 +29,17 @@ syncToDisk () {
     fi
 }
 
+ramDiskTooSmall () {
+    echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
+    umount -l $RAM_LOG/
+    umount -l $HDD_LOG/
+    if [ "$MAIL" = true ]; then
+        echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
+    fi
+    exit 1
+
+}
+
 syncFromDisk () {
     isSafe
 
@@ -36,19 +47,24 @@ syncFromDisk () {
     if [ "$ZL2R" = true ]; then
         TP_SIZE=$LOG_DISK_SIZE
     fi
-    
-    if [ ! -z "$(du -sh -t "$TP_SIZE" $HDD_LOG/ | cut -f1)" ]; then
-        echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
-        umount -l $RAM_LOG/
-        umount -l $HDD_LOG/
-        if [ "$MAIL" = true ]; then
-            echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
+
+    # if custom sync is declared use it to determine amount of disk required
+    if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
+        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
+        LS_CMD='-exec ls -l  {} \;'
+        SRC_SIZE=$(eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | awk '{ sum += $5 } END { print sum }')
+        if [ $SRC_SIZE -gt $TP_LIMIT ] ; then
+            ramDiskTooSmall
         fi
-        exit 1
+    # else use standard caluclation
+    elif [ ! -z "$(du -sh -t "$TP_SIZE" $HDD_LOG/ | cut -f1)" ]; then
+        ramDiskTooSmall
     fi
 
-    if [ ! -z "$CUSTOM_SYNC_FROM_DISK" ]; then
-        eval $CUSTOM_SYNC_FROM_DISK 2>&1 | tee -a $LOG2RAM_LOG
+    COPY_CMD='-exec cp -rfup {} $RAM_LOG/ \;'
+
+    if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
+        eval "$CUSTOM_SYNC_FROM_DISK_FIND $COPY_CMD 2>&1" | tee -a $LOG2RAM_LOG
     elif [ -x "$(command -v rsync)" ]; then
         rsync -aXv --inplace --no-whole-file --delete-after $HDD_LOG/ $RAM_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
     else
