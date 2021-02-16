@@ -55,7 +55,8 @@ checkDiskSpace () {
 ramDiskTooSmall () {
 
     if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
-        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
+        # Get 90% of limit
+        TP_LIMIT=$(( ((${TP_SIZE//[!0-9]/} * 1048576) / 10) * 9 ))
         LS_CMD='-exec ls -l  {} \;'
         eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | sort -k 5 -n | awk -v size="$TP_LIMIT" '{ if( total + $5 > size) system("> " $9); else  total += $5 };'
 
