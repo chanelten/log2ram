@@ -29,7 +29,42 @@ syncToDisk () {
     fi
 }
 
+
+checkDiskSpace () {
+
+    # if custom sync is declared use it to determine amount of disk required
+    if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
+        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
+        LS_CMD='-exec ls -l  {} \;'
+        SRC_SIZE=$(eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | awk '{ sum += $5 } END { print sum }')
+        if [ $SRC_SIZE -gt $TP_LIMIT ] ; then
+            echo 0
+            return 
+        fi
+    # else use standard caluclation
+    elif [ ! -z "$(du -sh -t "$TP_SIZE" $HDD_LOG/ | cut -f1)" ]; then
+        echo 0
+        return 
+    fi
+
+    echo 1
+    return
+
+}
+
 ramDiskTooSmall () {
+
+    if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
+        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
+        LS_CMD='-exec ls -l  {} \;'
+        eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | sort -k 5 -n | awk -v size="$TP_LIMIT" '{ if( total + $5 > size) system("> " $9); else  total += $5 };'
+
+        if [ "$(checkDiskSpace)" -eq 1 ]; then 
+            return 
+        fi
+
+    fi
+
     echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
     umount -l $RAM_LOG/
     umount -l $HDD_LOG/
@@ -48,19 +83,8 @@ syncFromDisk () {
         TP_SIZE=$LOG_DISK_SIZE
     fi
 
-    # if custom sync is declared use it to determine amount of disk required
-    if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
-        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
-        LS_CMD='-exec ls -l  {} \;'
-        SRC_SIZE=$(eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | awk '{ sum += $5 } END { print sum }')
-        if [ $SRC_SIZE -gt $TP_LIMIT ] ; then
-            ramDiskTooSmall
-        fi
-    # else use standard caluclation
-    elif [ ! -z "$(du -sh -t "$TP_SIZE" $HDD_LOG/ | cut -f1)" ]; then
-        ramDiskTooSmall
-    fi
-
+    if [ "$(checkDiskSpace)" -ne 1 ]; then ramDiskTooSmall; fi
+ 
     COPY_CMD='-exec cp -rfup {} $RAM_LOG/ \;'
 
     if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
