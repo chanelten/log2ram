@@ -99,7 +99,8 @@ make_log_dir () {
 
 doLogrotate () {
     if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
-          logrotate $LOGROTATE_SYNC_CONFIG
+        LOG2RAM_LOG="/var/log/${LOG_NAME}"
+        logrotate -v  $LOGROTATE_SYNC_CONFIG 2>&1 | tee -a $LOG2RAM_LOG  
     fi
 }
 

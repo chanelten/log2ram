@@ -1,10 +1,9 @@
 /var/log/log2ram.log
 {
-  rotate 1
+  rotate 8
   daily
   missingok
   notifempty
-  delaycompress
+  copytruncate
   compress
 }
-
