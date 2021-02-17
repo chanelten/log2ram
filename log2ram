@@ -6,8 +6,12 @@ if [ -z "$PATH_DISK" ]; then
     PATH_DISK="/var/log"
 fi
 
-LOG_NAME="log2ram.log"
+if [ -z "$TP_PERCENT" ]; then
+    TP_PERCENT=90
+fi
 
+LOG_NAME="log2ram.log"
+LOG_SEPARATOR="\n**************** $(date) ******************************************"
 
 isSafe () {
     [ -d $HDD_LOG/ ] || echo "ERROR: $HDD_LOG/ doesn't exist! Can't sync."
@@ -25,8 +29,13 @@ syncToDisk () {
     if [ -x "$(command -v rsync)" ]; then
         rsync -aXv --inplace --no-whole-file --delete-after $RAM_LOG/ $HDD_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
     else
-        cp -rfup $RAM_LOG/ -T $HDD_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+        cp -rfupv $RAM_LOG/ -T $HDD_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
+        cp -v $RAM_LOG/$LOG_NAME $HDD_LOG/ 2>&1 | tee -a $LOG2RAM_LOG
     fi
+}
+
+getTpLimit(){
+    echo $(( ((${TP_SIZE//[!0-9]/} * 1048576) / 100) * $TP_PERCENT ))
 }
 
 
@@ -34,7 +43,7 @@ checkDiskSpace () {
 
     # if custom sync is declared use it to determine amount of disk required
     if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
-        TP_LIMIT=$(( ${TP_SIZE//[!0-9]/} * 1048576 ))
+        TP_LIMIT=$(getTpLimit)
         LS_CMD='-exec ls -l  {} \;'
         SRC_SIZE=$(eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | awk '{ sum += $5 } END { print sum }')
         if [ $SRC_SIZE -gt $TP_LIMIT ] ; then
@@ -55,22 +64,23 @@ checkDiskSpace () {
 ramDiskTooSmall () {
 
     if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
-        # Get 90% of limit
-        TP_LIMIT=$(( ((${TP_SIZE//[!0-9]/} * 1048576) / 10) * 9 ))
+        echo "Attempting to cull files from copy." | tee -a $LOG2RAM_LOG
+        TP_LIMIT=$(getTpLimit)
         LS_CMD='-exec ls -l  {} \;'
-        eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | sort -k 5 -n | awk -v size="$TP_LIMIT" '{ if( total + $5 > size) system("> " $9); else  total += $5 };'
+        eval "$CUSTOM_SYNC_FROM_DISK_FIND $LS_CMD" | sort -k 5 -n | awk -v size="$TP_LIMIT" '{ if( total + $5 > size) {system("> " $9); print "culling: " $9;} else  total += $5 } END{ print "total copy to: " total }' | tee -a $LOG2RAM_LOG
 
         if [ "$(checkDiskSpace)" -eq 1 ]; then 
+            echo "Successful cull of files." | tee -a $LOG2RAM_LOG
             return 
         fi
 
     fi
 
-    echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync."
+    echo "ERROR: RAM disk for "$HDD_LOG/" too small. Can't sync." | tee -a $LOG2RAM_LOG
     umount -l $RAM_LOG/
     umount -l $HDD_LOG/
     if [ "$MAIL" = true ]; then
-        echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root;
+        echo "LOG2RAM : No place on RAM for "$HDD_LOG/" anymore, fallback on the disk" | mail -s 'Log2Ram Error' root 2>&1 | tee -a $LOG2RAM_LOG
     fi
     exit 1
 
@@ -86,7 +96,7 @@ syncFromDisk () {
 
     if [ "$(checkDiskSpace)" -ne 1 ]; then ramDiskTooSmall; fi
  
-    COPY_CMD='-exec cp -rfup {} $RAM_LOG/ \;'
+    COPY_CMD='-exec cp -rfpv {} $RAM_LOG/ \;'
 
     if [ ! -z "$CUSTOM_SYNC_FROM_DISK_FIND" ]; then
         eval "$CUSTOM_SYNC_FROM_DISK_FIND $COPY_CMD 2>&1" | tee -a $LOG2RAM_LOG
@@ -124,7 +134,6 @@ make_log_dir () {
 
 doLogrotate () {
     if [ ! -z "$LOGROTATE_SYNC_CONFIG" ]; then
-        LOG2RAM_LOG="/var/log/${LOG_NAME}"
         logrotate -v  $LOGROTATE_SYNC_CONFIG 2>&1 | tee -a $LOG2RAM_LOG  
     fi
 }
@@ -143,7 +152,7 @@ case "$1" in
             PATH_LAST_PART=$( echo ${i##/*/} )
             RAM_LOG=$i
             HDD_LOG=$PATH_FIRST_PART/hdd.$PATH_LAST_PART
-            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME}"
+            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME};${HDD_LOG}/${LOG_NAME}"
             
             make_log_dir
             
@@ -158,21 +167,28 @@ case "$1" in
                 mount -t tmpfs -o nosuid,noexec,noatime,nodev,mode=0755,size=${SIZE} log2ram $RAM_LOG/
             fi
             wait_for $RAM_LOG
+
+            echo -e "$LOG_SEPARATOR\n[START]log2ram startup: $PATH_DISK" | tee -a $LOG2RAM_LOG
+
             syncFromDisk
+
+            echo -e "[START]log2ram startup completed: $PATH_DISK \n" | tee -a $LOG2RAM_LOG
         done
         ;;
 
     stop)
-        doLogrotate
-
         IFS=';'
         for i in $PATH_DISK; do
             PATH_FIRST_PART=$( echo ${i%/*} )
             PATH_LAST_PART=$( echo ${i##/*/} )
             RAM_LOG=$i
             HDD_LOG=$PATH_FIRST_PART/hdd.$PATH_LAST_PART
-            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME}"
+            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME};${HDD_LOG}/${LOG_NAME}"
             
+
+            echo -e "$LOG_SEPARATOR\n[STOP]log2ram stopping: $PATH_DISK" | tee -a $LOG2RAM_LOG
+
+            doLogrotate
             syncToDisk
             #ZRAM_LOG=$(awk '$2 == "/var/log" {print $1}' /proc/mounts)
             #ZRAM_LOG=$(echo ${ZRAM_LOG} | grep -o -E '[0-9]+')
@@ -180,21 +196,27 @@ case "$1" in
             umount -l $HDD_LOG/
             # Unsure as even with Root permision denied
             #echo ${ZRAM_LOG} > /sys/class/zram-control/hot_remove
+
+            echo -e "[STOP]log2ram stop completed: $PATH_DISK \n" | tee -a $LOG2RAM_LOG
+
         done
         ;;
 
     write)
-        doLogrotate
-
         IFS=';'
         for i in $PATH_DISK; do
             PATH_FIRST_PART=$( echo ${i%/*} )
             PATH_LAST_PART=$( echo ${i##/*/} )
             RAM_LOG=$i
             HDD_LOG=$PATH_FIRST_PART/hdd.$PATH_LAST_PART
-            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME}"
-            
+            LOG2RAM_LOG="${RAM_LOG}/${LOG_NAME};${HDD_LOG}/${LOG_NAME}"
+        
+            echo -e "$LOG_SEPARATOR\n[WRITE]log2ram writing: $PATH_DISK" | tee -a $LOG2RAM_LOG
+
+            doLogrotate
             syncToDisk
+
+            echo -e "[WRITE]log2ram write completed: $PATH_DISK \n" | tee -a $LOG2RAM_LOG
         done
         ;;
 
